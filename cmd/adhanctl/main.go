@@ -150,6 +150,10 @@ func setupLogger(verbose bool) {
 }
 
 func buildParams(f *flags) api.TimingsParams {
+	return buildParamsWithDate(f, time.Now())
+}
+
+func buildParamsWithDate(f *flags, date time.Time) api.TimingsParams {
 	return api.TimingsParams{
 		City:      f.city,
 		Country:   f.country,
@@ -157,15 +161,13 @@ func buildParams(f *flags) api.TimingsParams {
 		Longitude: f.longitude,
 		Method:    f.method,
 		School:    f.school,
-		Date:      time.Now(),
+		Date:      date,
 	}
 }
 
-func fetchWithCache(ctx context.Context, cfg *config.Config, f *flags) (*api.Response, error) {
+func fetchWithCache(ctx context.Context, cfg *config.Config, params api.TimingsParams) (*api.Response, error) {
 	client := api.NewClient()
 	c := cache.New(time.Duration(cfg.CacheSecs) * time.Second)
-
-	params := buildParams(f)
 
 	if resp, ok := c.Get(params); ok {
 		return resp, nil
@@ -178,6 +180,32 @@ func fetchWithCache(ctx context.Context, cfg *config.Config, f *flags) (*api.Res
 
 	_ = c.Set(params, resp)
 	return resp, nil
+}
+
+func findNextEvent(ctx context.Context, cfg *config.Config, f *flags, loc *time.Location) (*prayer.Event, []prayer.Event, *api.Response, error) {
+	params := buildParams(f)
+	resp, err := fetchWithCache(ctx, cfg, params)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	events := prayer.ParseTimes(resp, loc)
+	now := time.Now().In(loc)
+
+	next := prayer.NextEventAfter(events, now)
+	if next != nil {
+		return next, events, resp, nil
+	}
+
+	tomorrowParams := buildParamsWithDate(f, time.Now().Add(24*time.Hour))
+	tomorrowResp, err := fetchWithCache(ctx, cfg, tomorrowParams)
+	if err != nil {
+		return nil, events, resp, nil
+	}
+
+	tomorrowEvents := prayer.ParseTimes(tomorrowResp, loc)
+	tomorrowNext := prayer.NextEventAfter(tomorrowEvents, time.Now().In(loc))
+	return tomorrowNext, events, resp, nil
 }
 
 func validateLocation(f *flags) error {
@@ -206,7 +234,8 @@ func runToday(args []string) {
 	}
 
 	ctx := context.Background()
-	resp, err := fetchWithCache(ctx, cfg, f)
+	params := buildParams(f)
+	resp, err := fetchWithCache(ctx, cfg, params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error fetching timings: %v\n", err)
 		os.Exit(1)
@@ -258,22 +287,26 @@ func runNext(args []string) {
 	}
 
 	ctx := context.Background()
-	resp, err := fetchWithCache(ctx, cfg, f)
+	params := buildParams(f)
+	resp, err := fetchWithCache(ctx, cfg, params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error fetching timings: %v\n", err)
 		os.Exit(1)
 	}
 
 	loc := prayer.TimezoneFromResp(resp)
-	events := prayer.ParseTimes(resp, loc)
-	now := time.Now().In(loc)
+	next, _, _, err := findNextEvent(ctx, cfg, f, loc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error finding next prayer: %v\n", err)
+		os.Exit(1)
+	}
 
-	next := prayer.NextEventAfter(events, now)
 	if next == nil {
 		fmt.Println("No upcoming prayer found")
 		os.Exit(0)
 	}
 
+	now := time.Now().In(loc)
 	rem := prayer.HumanDuration(next.When.Sub(now))
 	timeStr := prayer.FormatTime(next.When, f.ampm)
 
@@ -301,17 +334,20 @@ func runNotify(args []string) {
 	}
 
 	ctx := context.Background()
-	resp, err := fetchWithCache(ctx, cfg, f)
+	params := buildParams(f)
+	resp, err := fetchWithCache(ctx, cfg, params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error fetching timings: %v\n", err)
 		os.Exit(1)
 	}
 
 	loc := prayer.TimezoneFromResp(resp)
-	events := prayer.ParseTimes(resp, loc)
-	now := time.Now().In(loc)
+	next, _, _, err := findNextEvent(ctx, cfg, f, loc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error finding next prayer: %v\n", err)
+		os.Exit(1)
+	}
 
-	next := prayer.NextEventAfter(events, now)
 	if next == nil {
 		fmt.Fprintln(os.Stderr, "no upcoming prayer found")
 		os.Exit(1)
@@ -440,13 +476,21 @@ func runWaybar(args []string) {
 	}
 
 	ctx := context.Background()
-	resp, err := fetchWithCache(ctx, cfg, f)
+	params := buildParams(f)
+	resp, err := fetchWithCache(ctx, cfg, params)
 	if err != nil {
 		waybar.Print(waybar.Output{Text: "adhanctl: error", Tooltip: err.Error()})
 		os.Exit(0)
 	}
 
-	out := waybar.Build(resp, f.ampm, f.arabic, short)
+	loc := prayer.TimezoneFromResp(resp)
+	next, events, resp, err := findNextEvent(ctx, cfg, f, loc)
+	if err != nil {
+		waybar.Print(waybar.Output{Text: "adhanctl: error", Tooltip: err.Error()})
+		os.Exit(0)
+	}
+
+	out := waybar.Build(resp, next, events, f.ampm, f.arabic, short)
 	waybar.Print(out)
 }
 

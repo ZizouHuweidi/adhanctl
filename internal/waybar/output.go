@@ -16,12 +16,9 @@ type Output struct {
 	Class   string `json:"class,omitempty"`
 }
 
-func Build(resp *api.Response, ampm, arabic, short bool) Output {
+func Build(resp *api.Response, nextEvent *prayer.Event, events []prayer.Event, ampm, arabic, short bool) Output {
 	loc := prayer.TimezoneFromResp(resp)
-	events := prayer.ParseTimes(resp, loc)
 	now := time.Now().In(loc)
-
-	next := prayer.NextEventAfter(events, now)
 
 	var text string
 	var tooltipLines []string
@@ -31,18 +28,18 @@ func Build(resp *api.Response, ampm, arabic, short bool) Output {
 		tooltipLines = append(tooltipLines, fmt.Sprintf("📅 %s", hijri))
 	}
 
-	if next != nil {
-		rem := prayer.HumanDuration(next.When.Sub(now))
-		timeStr := prayer.FormatTime(next.When, ampm)
+	if nextEvent != nil {
+		rem := prayer.HumanDuration(nextEvent.When.Sub(now))
+		timeStr := prayer.FormatTime(nextEvent.When, ampm)
 		if short {
-			text = fmt.Sprintf("%s %s", next.Name, timeStr)
+			text = fmt.Sprintf("%s %s", nextEvent.Name, timeStr)
 		} else {
-			text = fmt.Sprintf("%s %s (%s)", next.Name, timeStr, rem)
+			text = fmt.Sprintf("%s %s (%s)", nextEvent.Name, timeStr, rem)
 		}
-		tooltipLines = append(tooltipLines, fmt.Sprintf("Next: %s — %s", next.Name, rem))
+		tooltipLines = append(tooltipLines, fmt.Sprintf("Next: %s — %s", nextEvent.Name, rem))
 	} else {
-		text = "Internal Error"
-		tooltipLines = append(tooltipLines, "Internal Error")
+		text = "No upcoming prayer"
+		tooltipLines = append(tooltipLines, "No upcoming prayer")
 	}
 
 	tooltipLines = append(tooltipLines, "", "Today's Schedule:")
@@ -52,7 +49,7 @@ func Build(resp *api.Response, ampm, arabic, short bool) Output {
 				marker := ""
 				if now.After(e.When) {
 					marker = " ✓"
-				} else if next != nil && e.Name == next.Name {
+				} else if nextEvent != nil && e.Name == nextEvent.Name {
 					marker = " ←"
 				}
 				tooltipLines = append(tooltipLines,
