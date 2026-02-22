@@ -60,6 +60,7 @@ adhanctl [command] [flags]
 Commands:
   today       Show today's prayer schedule (default)
   next        Show next prayer with countdown
+  notify      Send desktop notification for next prayer
   serve       Run background notifier daemon
   waybar      Output JSON for Waybar module
   config      Manage configuration (init, show)

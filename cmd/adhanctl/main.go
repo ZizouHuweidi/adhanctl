@@ -35,6 +35,8 @@ func main() {
 		runToday(args)
 	case "next":
 		runNext(args)
+	case "notify":
+		runNotify(args)
 	case "serve":
 		runServe(args)
 	case "waybar":
@@ -61,6 +63,7 @@ Usage:
 Commands:
   today       Show today's prayer schedule (default)
   next        Show next prayer with countdown
+  notify      Send desktop notification for next prayer
   serve       Run background notifier daemon
   waybar      Output JSON for Waybar module
   config      Manage configuration
@@ -280,6 +283,44 @@ func runNext(args []string) {
 	if hijri != "" {
 		fmt.Printf("📅 %s\n", hijri)
 	}
+}
+
+func runNotify(args []string) {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	f := parseFlags(args, cfg)
+	setupLogger(f.verbose)
+
+	if err := validateLocation(f); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	resp, err := fetchWithCache(ctx, cfg, f)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error fetching timings: %v\n", err)
+		os.Exit(1)
+	}
+
+	loc := prayer.TimezoneFromResp(resp)
+	events := prayer.ParseTimes(resp, loc)
+	now := time.Now().In(loc)
+
+	next := prayer.NextEventAfter(events, now)
+	if next == nil {
+		fmt.Fprintln(os.Stderr, "no upcoming prayer found")
+		os.Exit(1)
+	}
+
+	hijri := prayer.HijriString(resp, f.arabic)
+	notify.Prayer(*next, hijri)
+
+	fmt.Printf("Sent notification: %s at %s\n", next.Name, prayer.FormatTime(next.When, f.ampm))
 }
 
 func runServe(args []string) {

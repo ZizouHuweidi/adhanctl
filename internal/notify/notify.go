@@ -15,10 +15,6 @@ func Desktop(summary, body string) error {
 		return exec.Command(cmd, summary, body).Run()
 	}
 
-	if cmd, err := exec.LookPath("dunstify"); err == nil {
-		return exec.Command(cmd, summary, body).Run()
-	}
-
 	fmt.Fprintf(os.Stderr, "NOTIFY: %s - %s\n", summary, body)
 	return nil
 }
