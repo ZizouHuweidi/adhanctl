@@ -1,0 +1,64 @@
+version: 2
+
+project_name: adhanctl
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    main: ./cmd/adhanctl
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+
+release:
+  github:
+    owner: zizouhuweidi
+    name: adhanctl
+  draft: false
+  prerelease: auto
+
+brews:
+  - name: adhanctl
+    repository:
+      owner: zizouhuweidi
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/zizouhuweidi/adhanctl"
+    description: "Prayer times CLI for Waybar and desktop notifications"
+    license: MIT
+    test: |
+      system "#{bin}/adhanctl version"
+    install: |
+      bin.install "adhanctl"
