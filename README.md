@@ -1,6 +1,6 @@
 # adhanctl
 
-A minimal CLI tool for Islamic prayer times, designed for Waybar integration and desktop notifications.
+minimal zero dependency CLI tool for Islamic prayer times, designed for Waybar integration and desktop notifications.
 
 ## Features
 
