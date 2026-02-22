@@ -119,7 +119,7 @@ Add to your `style.css`:
 
 ## Background Service
 
-For automatic notifications, configure `adhanctl serve` to run at startup, either manually through your DE or WM config or using systemd
+For automatic notifications, configure `adhanctl serve` to run at startup, either manually through your DE/WM config or using systemd
 
 ### Sway
 
